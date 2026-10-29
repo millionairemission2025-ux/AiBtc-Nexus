@@ -24,6 +24,17 @@ lncli() {
 }
 json() { python3 -c "import sys,json;print(json.load(sys.stdin)$1)"; }
 
+stop_pidfile() {  # graceful stop, then force after 15 s (btcd can ignore SIGTERM)
+  local file=$1 pid
+  [ -f "$file" ] || return 0
+  pid=$(cat "$file")
+  kill "$pid" 2>/dev/null || { rm -f "$file"; return 0; }
+  for _ in $(seq 1 15); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+  kill -9 "$pid" 2>/dev/null || true
+  for _ in $(seq 1 5); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+  rm -f "$file"
+}
+
 fetch() {  # fetch NAME URL MANIFEST_URL
   local file=$1 url=$2 manifest=$3
   curl -sSfL -o "$R/dl/$file" "$url"
@@ -86,13 +97,22 @@ up() {
 
   # btcd needs the mining address at startup; 500 blocks also activate segwit.
   local addr; addr=$(lncli alice newaddress p2wkh | json "['address']")
-  kill "$(cat "$R/btcd.pid")"; sleep 2
+  stop_pidfile "$R/btcd.pid"  # the old process must release its ports first
   start_btcd --miningaddr="$addr"
   btcctl generate 500 > /dev/null
   wait_synced alice; wait_synced bob
 
   local bob; bob=$(lncli bob getinfo | json "['identity_pubkey']")
-  lncli alice connect "$bob@127.0.0.1:19736" > /dev/null
+  # getinfo answers before the RPC server is fully started: retry until it is.
+  local connected=""
+  for _ in $(seq 1 60); do
+    if lncli alice connect "$bob@127.0.0.1:19736" > /dev/null 2>&1 \
+      || lncli alice listpeers | grep -q "$bob"; then
+      connected=1; break
+    fi
+    sleep 1
+  done
+  [ -n "$connected" ] || { echo "alice could not connect to bob" >&2; exit 1; }
   for _ in $(seq 1 30); do
     lncli alice openchannel --node_key "$bob" --local_amt 2000000 --push_amt 50000 \
       > /dev/null 2>&1 && break
@@ -128,9 +148,7 @@ EOF
 }
 
 down() {
-  for name in alice bob btcd; do
-    [ -f "$R/$name.pid" ] && kill "$(cat "$R/$name.pid")" 2>/dev/null || true
-  done
+  for name in alice bob btcd; do stop_pidfile "$R/$name.pid"; done
   rm -rf "$R/alice" "$R/bob" "$R/btcd" "$R"/*.pid "$R/env.sh"
   echo "stopped"
 }
