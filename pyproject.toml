@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aibtc-nexus"
-version = "0.1.0"
+version = "0.2.0"
 description = "Autonomous AI-to-AI price negotiation and Bitcoin Lightning payments for the machine economy."
 readme = "README.md"
 license = "MIT"
@@ -27,7 +27,7 @@ server = ["starlette>=0.37", "uvicorn>=0.29"]
 llm = ["anthropic>=2.3", "pydantic>=2.7"]
 mcp = ["mcp>=2.3"]
 all = ["aibtc-nexus[server,llm,mcp]"]
-dev = ["aibtc-nexus[all]", "pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.5"]
+dev = ["aibtc-nexus[all]", "pytest>=8", "pytest-asyncio>=0.23", "pytest-timeout>=2.3", "pytest-cov>=5", "ruff>=0.5"]
 
 [project.scripts]
 aibtc-nexus = "aibtc_nexus.cli:main"
@@ -42,6 +42,7 @@ packages = ["src/aibtc_nexus"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+timeout = 60
 
 [tool.ruff]
 line-length = 100

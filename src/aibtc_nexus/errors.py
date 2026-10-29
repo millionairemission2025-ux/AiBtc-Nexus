@@ -33,6 +33,11 @@ class BackendError(NexusError):
     """The Lightning backend returned an error or was unreachable."""
 
 
+class PaymentPending(BackendError):
+    """The payment may still complete: its outcome is unknown. Never retry it blindly;
+    resolve it with ``BuyerAgent.reconcile_pending``."""
+
+
 class ServiceError(NexusError):
     """The provider failed to deliver the purchased service."""
 

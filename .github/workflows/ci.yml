@@ -27,6 +27,6 @@ jobs:
           ruff check src tests examples
           ruff format --check src tests examples
       - name: Test
-        run: pytest -q
+        run: pytest -q --cov=aibtc_nexus --cov-report=term-missing --cov-fail-under=90
       - name: Demo
         run: aibtc-nexus demo

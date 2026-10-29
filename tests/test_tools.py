@@ -80,7 +80,7 @@ async def test_mcp_server_tools(provider, buyer, make_client, monkeypatch):
     monkeypatch.setattr(mcp_server, "HttpProviderClient", lambda url: make_client(provider))
     server = build_server(buyer)
     names = {t.name for t in await server.list_tools()}
-    assert names == {"list_services", "buy_service", "wallet_status"}
+    assert names == {"list_services", "buy_service", "wallet_status", "reconcile_payments"}
 
     def text(result):
         blocks = result[0] if isinstance(result, tuple) else result
@@ -109,6 +109,7 @@ async def test_mcp_server_tools(provider, buyer, make_client, monkeypatch):
         )
     )
     assert refused == {"ok": False, "error": "NegotiationFailed", "detail": refused["detail"]}
+    assert text(await server.call_tool("reconcile_payments", {})) == {"ok": True, "resolved": {}}
     status = text(await server.call_tool("wallet_status", {}))
     assert status["balance_sats"] < 10_000 and status["totals"]["out_count"] == 1
 
@@ -134,3 +135,10 @@ def test_cli_buy_reports_unreachable_provider(tmp_path, capsys, monkeypatch):
     ]
     assert cli.main(args) == 1
     assert "ConnectError" in capsys.readouterr().err
+
+
+def test_cli_reconcile(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("NEXUS_LN_BACKEND", "fake")
+    args = ["reconcile", "--identity", str(tmp_path / "b.key"), "--db", str(tmp_path / "b.db")]
+    assert cli.main(args) == 0
+    assert json.loads(capsys.readouterr().out) == {"resolved": {}, "still_pending": []}

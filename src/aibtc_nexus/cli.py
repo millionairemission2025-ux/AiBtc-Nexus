@@ -75,6 +75,10 @@ def _demo(args: argparse.Namespace) -> int:
             f"saved {result.saved_sats} sats vs list price."
         )
         print(f"Proof of payment (preimage): {result.preimage}")
+        print(
+            f"Escrow: {provider.escrow_status(result.payment_hash)['status']} "
+            "(the provider was paid only after delivering)"
+        )
         print(f"Result: {json.dumps(result.result)}")
         print(
             f"Buyer balance: {buyer_node.balance_sats} | provider balance: "
@@ -130,6 +134,7 @@ def _serve_provider(args: argparse.Namespace) -> int:
             handler_from_spec(s.get("handler", "echo")),
             floor_price_sats=s.get("floor_price_sats"),
             max_rounds=int(s.get("max_rounds", 5)),
+            escrow=s.get("escrow"),
         )
         for s in config["services"]
     ]
@@ -155,7 +160,13 @@ def _serve_provider(args: argparse.Namespace) -> int:
     platform_url = os.environ.get("NEXUS_PLATFORM_URL") or config.get("platform_url")
     if platform_url and fee_bps:
         settler = FeeSettler(ledger, backend, http_invoice_fetcher(platform_url), identity.agent_id)
-    app = create_provider_app(provider, settler, admin_token=os.environ.get("NEXUS_ADMIN_TOKEN"))
+    app = create_provider_app(
+        provider,
+        settler,
+        admin_token=os.environ.get("NEXUS_ADMIN_TOKEN"),
+        rate_limit_per_second=args.rate_limit or None,
+        trust_proxy=args.trust_proxy,
+    )
     print(f"provider agent id: {identity.agent_id}", file=sys.stderr)
     uvicorn.run(app, host=args.host, port=args.port)
     return 0
@@ -212,6 +223,27 @@ def _buy(args: argparse.Namespace) -> int:
     return asyncio.run(run())
 
 
+def _reconcile(args: argparse.Namespace) -> int:
+    from .buyer import BuyerAgent
+    from .config import backend_from_env, policy_from_env
+    from .identity import AgentIdentity
+    from .ledger import Ledger
+
+    async def run() -> int:
+        buyer = BuyerAgent(
+            AgentIdentity.load_or_create(args.identity, "buyer"),
+            backend_from_env("buyer"),
+            policy=policy_from_env(),
+            ledger=Ledger(args.db),
+        )
+        resolved = await buyer.reconcile_pending()
+        still = [p.payment_hash for p in buyer.ledger.pending_outgoing()]
+        print(json.dumps({"resolved": resolved, "still_pending": still}, indent=2))
+        return 0
+
+    return asyncio.run(run())
+
+
 def _mcp(args: argparse.Namespace) -> int:
     from .mcp_server import main
 
@@ -243,6 +275,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--l402-secret-file", default="l402.secret")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8402)
+    p.add_argument(
+        "--rate-limit",
+        type=float,
+        default=5.0,
+        help="POST requests per second per client IP (0 disables)",
+    )
+    p.add_argument(
+        "--trust-proxy",
+        action="store_true",
+        help="use X-Forwarded-For (only behind a proxy that sets it)",
+    )
     p.set_defaults(func=_serve_provider)
 
     p = sub.add_parser("serve-platform", help="collect platform fees from providers")
@@ -258,6 +301,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--identity", default="buyer.key")
     p.add_argument("--db", default="buyer.db")
     p.set_defaults(func=_buy)
+
+    p = sub.add_parser("reconcile", help="resolve payments whose outcome was unknown")
+    p.add_argument("--identity", default="buyer.key")
+    p.add_argument("--db", default="buyer.db")
+    p.set_defaults(func=_reconcile)
 
     p = sub.add_parser("mcp", help="run the MCP server on stdio")
     p.set_defaults(func=_mcp)

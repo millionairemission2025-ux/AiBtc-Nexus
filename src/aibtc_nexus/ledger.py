@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 import time
 from dataclasses import dataclass
+from typing import Any
 
 from .errors import DuplicatePayment
 
@@ -34,6 +36,13 @@ CREATE TABLE IF NOT EXISTS payments (
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL,
     PRIMARY KEY (direction, payment_hash)
+);
+CREATE TABLE IF NOT EXISTS state (
+    kind TEXT NOT NULL,
+    key TEXT NOT NULL,
+    data TEXT NOT NULL,
+    expires_at REAL,
+    PRIMARY KEY (kind, key)
 );
 CREATE TABLE IF NOT EXISTS platform_fees (
     payment_hash TEXT PRIMARY KEY,
@@ -72,6 +81,17 @@ class Ledger:
 
     def close(self) -> None:
         self._conn.close()
+
+    def __enter__(self) -> Ledger:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        conn = getattr(self, "_conn", None)
+        if conn is not None:
+            conn.close()
 
     # negotiations ------------------------------------------------------
     def record_negotiation(
@@ -269,3 +289,71 @@ class Ledger:
         out = {"accrued": 0, "settled": 0}
         out.update({r["status"]: r["s"] for r in rows})
         return out
+
+    # provider state (sessions, quotes, deliveries, escrow jobs) ---------
+    def put_state(self, kind: str, key: str, data: Any, expires_at: float | None = None) -> None:
+        with self._lock:
+            self._conn.execute(
+                """INSERT INTO state VALUES (?, ?, ?, ?)
+                   ON CONFLICT (kind, key) DO UPDATE SET
+                     data = excluded.data, expires_at = excluded.expires_at""",
+                (kind, key, json.dumps(data), expires_at),
+            )
+
+    def get_state(self, kind: str, key: str) -> Any | None:
+        with self._lock:
+            row = self._conn.execute(
+                """SELECT data FROM state WHERE kind = ? AND key = ?
+                   AND (expires_at IS NULL OR expires_at > ?)""",
+                (kind, key, time.time()),
+            ).fetchone()
+        return json.loads(row["data"]) if row else None
+
+    def delete_state(self, kind: str, key: str) -> None:
+        with self._lock:
+            self._conn.execute("DELETE FROM state WHERE kind = ? AND key = ?", (kind, key))
+
+    def list_state(self, kind: str) -> list[tuple[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT key, data FROM state WHERE kind = ? ORDER BY rowid", (kind,)
+            ).fetchall()
+        return [(r["key"], json.loads(r["data"])) for r in rows]
+
+    def count_state(self, kind: str) -> int:
+        with self._lock:
+            return int(
+                self._conn.execute(
+                    """SELECT COUNT(*) AS n FROM state WHERE kind = ?
+                       AND (expires_at IS NULL OR expires_at > ?)""",
+                    (kind, time.time()),
+                ).fetchone()["n"]
+            )
+
+    def purge_expired_state(self) -> int:
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM state WHERE expires_at IS NOT NULL AND expires_at <= ?",
+                (time.time(),),
+            )
+            return cur.rowcount
+
+    def pending_outgoing(self) -> list[PaymentRecord]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM payments WHERE direction = 'out' AND status = 'pending'"
+            ).fetchall()
+        return [
+            PaymentRecord(
+                r["direction"],
+                r["payment_hash"],
+                r["counterparty"],
+                r["service_id"],
+                r["amount_sats"],
+                r["fee_sats"],
+                r["status"],
+                r["preimage"],
+                r["created_at"],
+            )
+            for r in rows
+        ]

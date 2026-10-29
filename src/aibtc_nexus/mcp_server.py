@@ -93,6 +93,16 @@ def build_server(buyer: BuyerAgent | None = None) -> MCPServer:
         )
 
     @server.tool()
+    async def reconcile_payments() -> str:
+        """Resolve payments whose outcome was unknown (e.g. after a lost connection)
+        by asking the Lightning node. Safe to call at any time."""
+        try:
+            resolved = await buyer.reconcile_pending()
+        except (NexusError, NotImplementedError) as e:
+            return json.dumps({"ok": False, "error": type(e).__name__, "detail": str(e)})
+        return json.dumps({"ok": True, "resolved": resolved})
+
+    @server.tool()
     async def wallet_status() -> str:
         """Wallet balance, today's spending against the limits, and totals."""
         report = buyer.report()

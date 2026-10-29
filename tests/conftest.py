@@ -40,6 +40,7 @@ def buyer(network):
 
 
 def http_client_for(provider, **app_kwargs):
+    app_kwargs.setdefault("rate_limit_per_second", None)
     app = create_provider_app(provider, **app_kwargs)
     return HttpProviderClient("http://provider.test", transport=httpx.ASGITransport(app=app))
 

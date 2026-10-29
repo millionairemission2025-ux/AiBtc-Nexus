@@ -21,7 +21,7 @@ from .errors import (
 )
 from .identity import AgentIdentity
 from .ledger import Ledger
-from .lightning.base import LightningBackend, preimage_matches
+from .lightning.base import LightningBackend, PaymentState, preimage_matches
 from .negotiation import ConcessionStrategy, NegotiationContext, Role, Strategy, decide_safely
 from .policy import PolicyEngine, SpendingPolicy
 from .protocol import Envelope, EnvelopeVerifier, MessageType, price_from, sign
@@ -231,15 +231,23 @@ class BuyerAgent:
             )
         try:
             payment = await self.backend.pay_invoice(payment_request, fee_limit)
-        except PaymentError:
+        except PaymentError as e:
             self.ledger.fail_payment("out", invoice.payment_hash)
+            if caveats.escrow:
+                raise PaymentError(
+                    f"escrow payment not completed, no funds spent ({e}); "
+                    "the provider cancels the invoice when its service fails"
+                ) from e
             raise
         except BackendError:
             # Outcome unknown: leave it pending so it is never paid twice.
+            # reconcile_pending() resolves it once the node knows the outcome.
             log.error("payment %s outcome unknown; left pending", invoice.payment_hash)
             raise
         if not preimage_matches(payment.preimage, invoice.payment_hash):
             raise PaymentError("backend returned an invalid preimage")
+        if payment.fee_sats > fee_limit:
+            log.warning("routing fee %s sats above the %s limit", payment.fee_sats, fee_limit)
         self.ledger.complete_payment(
             "out", invoice.payment_hash, payment.preimage, payment.fee_sats
         )
@@ -336,6 +344,24 @@ class BuyerAgent:
             time.monotonic() - started,
         )
         return result
+
+    async def reconcile_pending(self) -> dict[str, str]:
+        """Ask the backend about payments whose outcome was unknown and settle the
+        ledger accordingly. Returns {payment_hash: new status}."""
+        resolved: dict[str, str] = {}
+        for record in self.ledger.pending_outgoing():
+            status = await self.backend.payment_status(record.payment_hash)
+            if status.state is PaymentState.SUCCEEDED and preimage_matches(
+                status.preimage, record.payment_hash
+            ):
+                self.ledger.complete_payment(
+                    "out", record.payment_hash, status.preimage, status.fee_sats
+                )
+                resolved[record.payment_hash] = "succeeded"
+            elif status.state in (PaymentState.FAILED, PaymentState.NOT_FOUND):
+                self.ledger.fail_payment("out", record.payment_hash)
+                resolved[record.payment_hash] = "failed"
+        return resolved
 
     def report(self) -> dict:
         return {

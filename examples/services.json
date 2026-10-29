@@ -8,6 +8,7 @@
       "list_price_sats": 1000,
       "floor_price_sats": 650,
       "max_rounds": 5,
+      "escrow": true,
       "handler": "echo"
     },
     {

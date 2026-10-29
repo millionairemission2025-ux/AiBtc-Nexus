@@ -13,6 +13,7 @@ from aibtc_nexus.errors import (
     ServiceError,
 )
 from aibtc_nexus.fees import FeeSettler
+from aibtc_nexus.handlers import echo_handler
 from aibtc_nexus.identity import AgentIdentity
 from aibtc_nexus.ledger import Ledger
 from aibtc_nexus.policy import SpendingPolicy
@@ -77,8 +78,8 @@ async def test_policy_blocks_payment(network, client):
 
 
 class OverchargingProvider(ProviderAgent):
-    async def _challenge(self, service, price, quote):
-        return await super()._challenge(service, price + 500, quote)
+    async def _challenge(self, service, price, quote, params):
+        return await super()._challenge(service, price + 500, quote, params)
 
 
 async def test_buyer_refuses_inflated_invoice(network, services, buyer, make_client):
@@ -120,10 +121,17 @@ async def test_token_for_other_service_rejected(buyer, client, network):
     assert resp.status == 401
 
 
-async def test_unpaid_invoice_needs_settlement(provider, client):
+async def test_unpaid_invoice_needs_settlement(network, buyer, make_client):
+    provider = ProviderAgent(
+        AgentIdentity.generate(),
+        network.create_node("direct"),
+        [Service("fixed", "", 300, echo_handler, escrow=False)],
+    )
+    client = make_client(provider)
     challenge = await client.invoke("fixed", {})
     token, _ = l402.parse_challenge(challenge.headers["www-authenticate"])
     caveats = l402.read_caveats(token)
+    assert not caveats.escrow
     # Learn the preimage without paying (as a compromised node log could): still refused.
     preimage = provider.backend._invoices[caveats.payment_hash].preimage
     resp = await client.invoke(
@@ -142,7 +150,9 @@ async def test_failed_delivery_keeps_proof_and_can_be_retried(network, buyer, ma
         return "ok"
 
     provider = ProviderAgent(
-        AgentIdentity.generate(), network.create_node("flaky"), [Service("s", "", 100, flaky)]
+        AgentIdentity.generate(),
+        network.create_node("flaky"),
+        [Service("s", "", 100, flaky, escrow=False)],
     )
     buyer.delivery_retries = 1
     client = make_client(provider)

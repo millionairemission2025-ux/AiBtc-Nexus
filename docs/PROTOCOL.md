@@ -66,6 +66,24 @@ price is exactly the price it proposed or accepted.
    settled, then runs the service. Repeating the same authorization returns the
    same result without charging again.
 
+### Escrow (hold invoices)
+
+When `escrow` is set in the token's caveats (and in `/v1/services`), the invoice is
+a **hold invoice**: the provider generates the preimage and keeps it secret.
+
+1. The buyer's first request carries the service `params`.
+2. The buyer pays; its funds are locked in the HTLC (state `ACCEPTED`).
+3. The provider sees the locked payment, runs the service with those params and
+   stores the result.
+4. Only then does it settle the invoice, which reveals the preimage to the buyer.
+   If the service fails or exceeds its timeout, the provider cancels the invoice
+   and the HTLC fails back to the buyer: no funds are spent.
+5. The buyer calls again with `Authorization: L402 <token>:<preimage>` and gets
+   the stored result.
+
+`GET /v1/escrow/{payment_hash}` returns the job status: `waiting`, `running`,
+`settling`, `delivered`, `refunded`, `expired` or `canceled`.
+
 The token is not a full macaroon yet; clients treat it as opaque, so a macaroon
 implementation can replace it without changing the wire format.
 

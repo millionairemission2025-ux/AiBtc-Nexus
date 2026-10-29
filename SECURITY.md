@@ -29,21 +29,24 @@
 | Forged or replayed messages | Ed25519 signatures, nonces, clock-skew window, round checks |
 | Provider inflates the invoice | buyer checks amount, hash, service and quote before paying |
 | Double payment | ledger records the payment as pending before it is sent |
-| Unknown payment outcome (timeout) | payment stays pending and is never retried automatically |
-| Paid but not delivered | proof of payment kept; `retry_delivery` collects without paying again |
+| Unknown payment outcome (timeout) | payment stays pending, blocks a second attempt, resolved by `reconcile_pending` |
+| Paid but not delivered | escrow: funds locked until the result exists, refunded if the service fails; without escrow, proof of payment kept and `retry_delivery` collects without paying again |
+| Node down while settling or refunding | escrow retries settle/cancel until the node is back; jobs resume after a restart |
 | Fake proof of payment | provider checks the preimage and that its node settled the invoice |
 | Forged tokens | HMAC-SHA256 with a provider secret |
-| Negotiation flooding | session TTL and cap on open sessions; 256 KiB body limit |
+| Flooding | per-IP rate limit on POST, caps on open negotiations and escrow jobs, 256 KiB body limit checked while reading |
 
 ## Known limitations
 
-- Delivery after payment is not trustless: a dishonest provider can take the payment
-  and not deliver. The buyer keeps a signed quote and a proof of payment for
-  disputes, and should limit exposure per provider. Hold-invoice escrow is on the
-  roadmap.
-- Provider sessions and quotes live in memory and are lost on restart (paid tokens
-  stay valid as long as `l402.secret` is kept).
-- No rate limiting per IP; put the server behind a proxy that provides it.
+- Escrow proves that the provider produced *a* result before being paid, not that
+  the result is correct. Keep per-provider limits and pin providers you trust.
+- Escrow needs hold invoices (LND, simulated network). With LNbits the provider is
+  paid first; the buyer keeps the signed quote and proof of payment for disputes.
+- Escrow jobs are watched by polling the node (with backoff), so the number of
+  unpaid hold invoices is capped (`max_open_escrows`).
+- The L402 token is an HMAC caveat set rather than a full macaroon.
+- Replay protection keeps nonces in memory; after a restart a message could be
+  replayed within the 120 s skew window, but the round checks reject it.
 
 ## Reporting a vulnerability
 

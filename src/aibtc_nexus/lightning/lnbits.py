@@ -4,16 +4,30 @@ from __future__ import annotations
 
 import httpx
 
-from ..errors import BackendError, PaymentError
-from .base import Invoice, LightningBackend, PaymentResult, preimage_matches
+from ..errors import BackendError, PaymentError, PaymentPending
+from .base import (
+    Invoice,
+    LightningBackend,
+    PaymentResult,
+    PaymentState,
+    PaymentStatus,
+    preimage_matches,
+)
+
+
+class _HttpStatusError(BackendError):
+    def __init__(self, status_code: int, message: str):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class LnbitsBackend(LightningBackend):
     """An LNbits wallet. The admin key is needed only to pay; the invoice key
     is enough for a provider that only receives.
 
-    LNbits applies its own fee reserve; ``max_fee_sats`` is checked after the
-    payment against the fee LNbits reports.
+    LNbits applies its own fee reserve, so ``max_fee_sats`` cannot be enforced
+    per payment; a fee above it is logged by the caller, not treated as a failure
+    (the payment has already gone through).
     """
 
     def __init__(
@@ -36,7 +50,10 @@ class LnbitsBackend(LightningBackend):
         except httpx.HTTPError as e:
             raise BackendError(f"LNbits unreachable: {e}") from e
         if resp.status_code >= 400:
-            raise BackendError(f"LNbits {method} {path} -> {resp.status_code}: {resp.text[:300]}")
+            raise _HttpStatusError(
+                resp.status_code,
+                f"LNbits {method} {path} -> {resp.status_code}: {resp.text[:300]}",
+            )
         return resp.json()
 
     async def create_invoice(self, amount_sats: int, memo: str = "", expiry: int = 600) -> Invoice:
@@ -76,24 +93,40 @@ class LnbitsBackend(LightningBackend):
                 self.admin_key,
                 json={"out": True, "bolt11": payment_request},
             )
-        except BackendError as e:
+        except _HttpStatusError as e:
+            if e.status_code >= 500:
+                raise PaymentPending(str(e)) from e
             raise PaymentError(str(e)) from e
-        status = await self._request(
-            "GET", f"/api/v1/payments/{invoice.payment_hash}", self.admin_key
-        )
-        if not status.get("paid"):
-            raise PaymentError("LNbits reports the payment as not completed")
-        preimage = status.get("preimage") or status.get("details", {}).get("preimage", "")
-        if not preimage_matches(preimage, invoice.payment_hash):
+        except BackendError as e:  # connection lost: the payment may be in flight
+            raise PaymentPending(str(e)) from e
+        status = await self.payment_status(invoice.payment_hash)
+        if status.state is PaymentState.FAILED:
+            raise PaymentError("LNbits reports the payment as failed")
+        if status.state is not PaymentState.SUCCEEDED:
+            raise PaymentPending("LNbits reports the payment as not completed yet")
+        if not preimage_matches(status.preimage, invoice.payment_hash):
             raise PaymentError("LNbits returned a preimage that does not match the payment hash")
-        fee_msat = abs(int(status.get("details", {}).get("fee", 0) or 0))
-        fee_sats = -(-fee_msat // 1000)
-        if fee_sats > max_fee_sats:
-            # Already paid; surfaced so the caller can tighten LNbits' fee reserve.
-            raise PaymentError(
-                f"routing fee {fee_sats} exceeded limit {max_fee_sats} (payment sent)"
+        return PaymentResult(
+            invoice.payment_hash, status.preimage, invoice.amount_sats, status.fee_sats
+        )
+
+    async def payment_status(self, payment_hash: str) -> PaymentStatus:
+        try:
+            data = await self._request(
+                "GET", f"/api/v1/payments/{payment_hash}", self.admin_key or self.invoice_key
             )
-        return PaymentResult(invoice.payment_hash, preimage, invoice.amount_sats, fee_sats)
+        except _HttpStatusError as e:
+            if e.status_code == 404:
+                return PaymentStatus(PaymentState.NOT_FOUND)
+            raise
+        details = data.get("details") or {}
+        if data.get("paid"):
+            preimage = data.get("preimage") or details.get("preimage", "")
+            fee_msat = abs(int(details.get("fee", 0) or 0))
+            return PaymentStatus(PaymentState.SUCCEEDED, preimage, -(-fee_msat // 1000))
+        if str(data.get("status") or details.get("status", "")).lower() == "failed":
+            return PaymentStatus(PaymentState.FAILED)
+        return PaymentStatus(PaymentState.PENDING)
 
     async def is_invoice_settled(self, payment_hash: str) -> bool:
         data = await self._request("GET", f"/api/v1/payments/{payment_hash}", self.invoice_key)

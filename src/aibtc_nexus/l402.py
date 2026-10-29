@@ -39,6 +39,7 @@ class Caveats:
     expires_at: int
     quote_id: str = ""
     buyer: str = ""
+    escrow: bool = False  # hold invoice: the provider settles only after delivering
 
 
 def mint_token(secret: bytes, caveats: Caveats) -> str:

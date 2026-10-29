@@ -50,26 +50,27 @@ e agenti sulla rete, non massimizzare la fee.
 
 ## Roadmap
 
-### Fatto in questa versione (0.1)
+### Fatto (0.1 → 0.2)
 - Protocollo di negoziazione firmato, a più round, con protezione da replay.
 - Limiti rigidi su ogni decisione, strategia deterministica e strategia con Claude.
 - Backend LND e LNbits, rete simulata per test.
-- Pagamenti in stile L402 legati al prezzo negoziato, consegna idempotente, recupero
-  dopo una consegna fallita senza ripagare.
+- Pagamenti in stile L402 legati al prezzo negoziato, consegna idempotente.
+- **Escrow con hold invoice**: il fornitore incassa solo dopo aver consegnato; se il
+  servizio fallisce il compratore viene rimborsato automaticamente.
+- Stato del fornitore persistente (riavvii sicuri), riconciliazione dei pagamenti
+  con esito incerto, rate limiting.
 - Policy di spesa, ledger SQLite, commissioni di piattaforma.
-- Server HTTP, CLI, server MCP, Dockerfile, CI, 85 test.
+- Server HTTP, CLI, server MCP, Dockerfile, CI con copertura dei test ≥ 90%.
 
 ### Prossimi passi
 1. **Validazione su regtest/signet** con nodi veri (`tests/test_regtest_lnd.py`),
    poi mainnet con limiti bassi.
 2. **Pubblicazione su PyPI** (`pip install aibtc-nexus`) e annuncio nelle community
    Bitcoin/Lightning e degli sviluppatori di agenti.
-3. **Escrow con hold invoice**: il fornitore incassa solo dopo la consegna, per
-   eliminare il rischio di mancata consegna.
-4. **Macaroon veri** al posto del token HMAC (compatibilità piena con client L402).
-5. **Reputazione dei fornitori**: punteggi basati sulle consegne riuscite, firmati.
-6. **Directory pubblica / marketplace** dei servizi.
-7. **Dashboard web** per wallet e fornitori (spesa, vendite, fee, kill switch).
-8. **Altri backend**: Nostr Wallet Connect (NWC), Core Lightning, Breez SDK.
-9. **Integrazioni** con i framework di agenti (LangChain, CrewAI), oltre a MCP.
-10. **Persistenza delle sessioni** del fornitore (oggi sono in memoria) e rate limiting.
+3. **Macaroon veri** al posto del token HMAC (compatibilità piena con client L402).
+4. **Reputazione dei fornitori**: punteggi firmati basati sulle consegne riuscite.
+5. **Directory pubblica / marketplace** dei servizi.
+6. **Dashboard web** per wallet e fornitori (spesa, vendite, fee, kill switch).
+7. **Altri backend**: Nostr Wallet Connect (NWC), Core Lightning, Breez SDK;
+   hold invoice anche su LNbits.
+8. **Integrazioni** con i framework di agenti (LangChain, CrewAI), oltre a MCP.
