@@ -63,10 +63,12 @@ e agenti sulla rete, non massimizzare la fee.
 - Server HTTP, CLI, server MCP, Dockerfile, CI con copertura dei test ≥ 90%.
 
 ### Prossimi passi
-1. **Validazione su regtest/signet** con nodi veri (`tests/test_regtest_lnd.py`),
-   poi mainnet con limiti bassi.
-2. **Pubblicazione su PyPI** (`pip install aibtc-nexus`) e annuncio nelle community
-   Bitcoin/Lightning e degli sviluppatori di agenti.
+1. ~~Validazione su regtest con nodi veri~~ — **fatto**: escrow, rimborso, pagamento
+   diretto, riconciliazione e pagamento delle commissioni verificati tra due nodi LND
+   reali; il test gira in CI a ogni modifica. Prossimo: mainnet con limiti bassi.
+2. **Pubblicazione su PyPI** (`pip install aibtc-nexus`): workflow pronto, serve una
+   configurazione una tantum su pypi.org (vedi `docs/LAUNCH.md`). Poi annuncio nelle
+   community Bitcoin/Lightning e degli sviluppatori di agenti.
 3. **Macaroon veri** al posto del token HMAC (compatibilità piena con client L402).
 4. **Reputazione dei fornitori**: punteggi firmati basati sulle consegne riuscite.
 5. **Directory pubblica / marketplace** dei servizi.

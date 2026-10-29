@@ -234,10 +234,7 @@ class BuyerAgent:
         except PaymentError as e:
             self.ledger.fail_payment("out", invoice.payment_hash)
             if caveats.escrow:
-                raise PaymentError(
-                    f"escrow payment not completed, no funds spent ({e}); "
-                    "the provider cancels the invoice when its service fails"
-                ) from e
+                raise PaymentError(f"escrow payment not completed, no funds spent: {e}") from e
             raise
         except BackendError:
             # Outcome unknown: leave it pending so it is never paid twice.

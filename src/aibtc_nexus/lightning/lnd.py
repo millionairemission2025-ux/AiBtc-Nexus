@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import ssl
 
 import httpx
 
@@ -64,7 +65,7 @@ class LndRestBackend(LightningBackend):
         self._client = httpx.AsyncClient(
             base_url=url.rstrip("/"),
             headers={"Grpc-Metadata-macaroon": macaroon_hex},
-            verify=tls_cert_path if tls_cert_path else True,
+            verify=ssl.create_default_context(cafile=tls_cert_path) if tls_cert_path else True,
             timeout=timeout,
             transport=transport,
         )

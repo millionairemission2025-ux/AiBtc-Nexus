@@ -16,8 +16,14 @@
 - Per-IP rate limiting (`--rate-limit`, `--trust-proxy`), caps on open escrow jobs,
   handler timeout, 413 for oversized bodies.
 - CI enforces ≥ 90% test coverage; tests have a timeout.
+- `scripts/regtest.sh` and a CI job that make real payments between two LND nodes
+  on regtest (escrow purchase, escrow refund, direct payment, reconciliation).
+- Release workflow publishing to PyPI with trusted publishing on `v*` tags.
 
 ### Fixed
+- LND: TLS certificate passed to httpx in the non-deprecated way.
+- Escrow payment errors no longer blame the service when the payment failed for
+  another reason (e.g. insufficient balance).
 - LNbits: a routing fee above the limit was reported as a failed payment although
   the payment had gone through, so the buyer lost the service it paid for.
 - LND and LNbits: an in-flight payment or a lost connection was treated as a

@@ -178,15 +178,33 @@ ruff check src tests examples && ruff format --check src tests examples
 pytest
 ```
 
-`tests/test_regtest_lnd.py` runs a real payment between two LND nodes (for
-example on [Polar](https://lightningpolar.com) regtest) when the `NEXUS_IT_*`
-variables documented in the file are set; otherwise it is skipped.
+### Real Lightning tests (regtest)
+
+`tests/test_regtest_lnd.py` makes real payments between two LND nodes: an escrow
+purchase, an escrow refund when the service fails, a direct payment and payment
+reconciliation. `scripts/regtest.sh` starts a throwaway network (btcd + two LND
+nodes with a funded channel, binaries checksum-verified) on Linux x86_64:
+
+```bash
+scripts/regtest.sh up
+source /tmp/aibtc-nexus-regtest/env.sh
+pytest tests/test_regtest_lnd.py -v
+scripts/regtest.sh down
+```
+
+CI runs the same job on every push. You can also point the `NEXUS_IT_*`
+variables at nodes from [Polar](https://lightningpolar.com).
 
 ## Status
 
-Alpha. The simulated network and the mocked LND/LNbits APIs are exercised in CI;
-the LND and LNbits backends have not yet been run against real nodes. Start on regtest or
-signet, then mainnet with small limits. Read [SECURITY.md](SECURITY.md) first.
+Alpha. In CI: the full suite on Python 3.10–3.13, and real payments between two LND
+nodes on regtest (escrow, refund, direct payment, reconciliation). The LNbits
+backend is tested against a mocked API only. Nothing has run on mainnet yet: start
+with small limits and read [SECURITY.md](SECURITY.md) first.
+
+Note for providers: Lightning channels keep a reserve (usually 1% of the channel)
+that cannot be spent, so platform fees are settled only once the provider's
+spendable balance exceeds it; until then they stay accrued and are retried.
 
 Business model and roadmap: [docs/BUSINESS.md](docs/BUSINESS.md).
 
