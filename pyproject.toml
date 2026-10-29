@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aibtc-nexus"
+version = "0.1.0"
+description = "Autonomous AI-to-AI price negotiation and Bitcoin Lightning payments for the machine economy."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "millionairemission2025-ux" }]
+keywords = ["bitcoin", "lightning", "l402", "ai-agents", "negotiation", "payments", "mcp"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Office/Business :: Financial",
+]
+dependencies = [
+    "cryptography>=42",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+server = ["starlette>=0.37", "uvicorn>=0.29"]
+llm = ["anthropic>=2.3", "pydantic>=2.7"]
+mcp = ["mcp>=2.3"]
+all = ["aibtc-nexus[server,llm,mcp]"]
+dev = ["aibtc-nexus[all]", "pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.5"]
+
+[project.scripts]
+aibtc-nexus = "aibtc_nexus.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/millionairemission2025-ux/AiBtc-Nexus"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aibtc_nexus"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "ASYNC"]
