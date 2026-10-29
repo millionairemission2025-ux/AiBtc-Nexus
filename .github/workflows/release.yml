@@ -1,0 +1,48 @@
+name: Release
+
+# Publishes to PyPI when a version tag (e.g. v0.2.0) is pushed. Uses PyPI
+# "trusted publishing": no token is stored in GitHub. One-time setup on pypi.org:
+# Account -> Publishing -> add a pending publisher with
+#   project: aibtc-nexus, owner: millionairemission2025-ux, repository: AiBtc-Nexus,
+#   workflow: release.yml, environment: pypi
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Check the tag matches the package version
+        run: |
+          version=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          test "v$version" = "$GITHUB_REF_NAME"
+      - name: Build
+        run: |
+          python -m pip install build
+          python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

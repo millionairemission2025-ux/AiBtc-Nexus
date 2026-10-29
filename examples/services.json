@@ -1,0 +1,21 @@
+{
+  "name": "Data_Provider_B",
+  "platform_fee_bps": 100,
+  "services": [
+    {
+      "service_id": "market-data",
+      "description": "BTC order book snapshot",
+      "list_price_sats": 1000,
+      "floor_price_sats": 650,
+      "max_rounds": 5,
+      "escrow": true,
+      "handler": "echo"
+    },
+    {
+      "service_id": "weather",
+      "description": "Forwards to an upstream weather API (replace the URL)",
+      "list_price_sats": 50,
+      "handler": {"type": "http", "url": "https://example.com/weather", "timeout": 10}
+    }
+  ]
+}
